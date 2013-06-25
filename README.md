@@ -21,7 +21,7 @@
  * // TODO コードのURL  
  * Javaのブロックメソッドはインタラプトをサポートしているので、それを使おう  
 
-### JavaのThreadクラスのメソッドたち
+### Threadクラスのメソッドたち
 | メソッド | 内容 |
 |----------|--------------------------------|
 | void interrupt() | インタラプテッドステータスをtrueにする |
@@ -151,5 +151,31 @@ public static void timedRunOK(final Runnable r, long timeout, TimeUnit unit) thr
 
 private static RuntimeException launderThrowable(Throwable t) {
     return new RuntimeException(t);
+}
+```
+
+## 7-1-5 Futureからキャンセルする
+* Future#cancel(boolean)はtrueかつタスクがどれかのスレッドで実行中なら、インタラプトする。
+* falseの場合は”このタスクがまだスタートしていなければ実行するな”
+ * Executorで実行されたスレッドは安全にキャンセルできるのでFuture#cancel(true)を使える
+
+### Furureを使ったtimedRun
+```java
+private static final ScheduledExecutorService taskExec = Executors.newScheduledThreadPool(3);
+
+public static void timedRunOK2(Runnable r, long timeout, TimeUnit unit) throws InterruptedException{
+    Future<?> task = taskExec.submit(r);
+    try {
+        task.get(timeout, unit);
+    } catch (TimeoutException e) {
+        // タスクはfinallyブロックでキャンセルされる
+        e.printStackTrace();
+    } catch (ExecutionException e) {
+        // タスクの中で投げられた例外：再投する
+        throw launderThrowable(e);
+    } finally {
+        // タスクが既に完了していたら無害
+        task.cancel(true); // 実行中ならインタラプトする
+    }
 }
 ```
