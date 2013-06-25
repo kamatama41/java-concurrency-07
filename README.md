@@ -179,3 +179,22 @@ public static void timedRunOK2(Runnable r, long timeout, TimeUnit unit) throws I
     }
 }
 ```
+
+## 7-1-5 インタラプトできないブロッキングの扱い方
+* java.ioのソケットI/O
+ * InputStraemとOutputStreamはソケットをクローズするとSocketExceptionが発生する
+* java.nioのソケットI/O
+ * InterruptedChannel上でウェイトしているスレッドにインタラプトするとCloseByInterruptExceptionを投げる
+ * InterruptedChannelをクローズすると、チャンネル操作でブロックしていたスレッドはAsynchronousExceptionを投げる
+* Selectorによる非同期I/O
+ * スレッドがSelector#select(java.nio.channels)でブロックしていると、wakeupがCloseSelectorExceptionを投げてselectを途中でリターンさせます
+* ロックの取得
+ * 基本的にはロック待ちのスレッドをストップする方法は無い
+ * Lock#interrupibilyメソッドを使ってインタラプションに対応させることは可能(13章)
+
+### interruptをオーバーライドして標準的でないキャンセルをカプセル化する
+* // TODO コードのURL
+
+## 7-1-7 標準的でないキャンセルをnewTaskForでカプセル化する
+前項で使ったテクニックをThreadPoolExecutor#newTaskForで洗練させることが可能
+* // TODO コードのURL
