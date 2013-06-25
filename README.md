@@ -64,3 +64,92 @@
 - - -
 **自分がどのスレッドで動かされているかが分からない場合(インタラプションポリシーを判定できない場合)、インタラプトをもみ消してはダメです！！**
 - - -
+
+### インタラプションに対してキャンセルがサポートされていない場合はの対処例
+BlockingQueue#take()にはキャンセルがサポートされていないので、無限ループになる可能性がある  
+(TODO なぜ無限ループになるか分からない・・・)
+```java
+public Task getNextTask(BlockingQueue<Task> queue) {
+    boolean interrupted = false;
+    try {
+        while(true) {
+            try {
+                return queue.take();
+            } catch (InterruptedException e) {
+                interrupted = true;
+                // このままループを続けて、再試行する
+            }
+        }
+    } finally {
+        if(interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+}
+```
+
+### キャンセルのインタラプション以外の使い方例
+* ThreadPoolExecutorのワーカースレッドがインタラプトを検知
+* スレッドプールがシャットダウンをチェック
+ * ダウンしていたらプールの掃除をして終了
+ * ダウンしていなかったらワーカースレッドを作成して、プール復元
+
+## 7-1-4 例：実行時間の制限
+### 自分が”ゲスト”のスレッドへのインタラプトをスケジューリングする、ダメな例
+* 呼び出しスレッドのインタラプションポリシーを判断できない場合がある
+ * タスクがインタラプションを無視する場合は無限に終わらない可能性あり
+* runがinterruptのタスクが始まる前に終わってしまったら何が起こるか分からない
+
+```java
+private static final ScheduledExecutorService cancelExec = Executors.newScheduledThreadPool(3);
+
+public static void timedRun(Runnable r, long timeout, TimeUnit unit) {
+    final Thread taskThread = Thread.currentThread();
+    cancelExec.schedule(new Runnable() {
+        @Override
+        public void run() {
+            taskThread.interrupt();
+        }
+    }, timeout, unit);
+    r.run();
+}
+```
+
+### 上記をちゃんとタイムアウトするように修正した例
+ただし、Thread#join()の欠陥あり
+```java
+/** List 7-9 専用スレッドの中でタスクにインタラプトする */
+public static void timedRunOK(final Runnable r, long timeout, TimeUnit unit) throws InterruptedException {
+    class RethrowableTask implements Runnable {
+        private volatile Throwable t;
+        @Override
+        public void run() {
+            try { r.run(); }
+            catch (Throwable t) { this.t = t; }
+        }
+        void rethrow() {
+            if(t != null) {
+                throw launderThrowable(t);
+            }
+        }
+    }
+    RethrowableTask task = new RethrowableTask();
+    final Thread taskThread = new Thread(task);
+    taskThread.start();
+    // タスクがタイムアウトするようにスケジューリング
+    cancelExec.schedule(new Runnable() {
+        @Override
+        public void run() {
+            taskThread.interrupt();
+        }
+    }, timeout, unit);
+    // インタラプトに対応しない場合の保険？？
+    taskThread.join(unit.toMillis(timeout));
+    // 例外を投げていたらthrowする
+    task.rethrow();
+}
+
+private static RuntimeException launderThrowable(Throwable t) {
+    return new RuntimeException(t);
+}
+```
