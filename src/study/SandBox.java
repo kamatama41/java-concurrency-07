@@ -1,6 +1,8 @@
 package study;
 
+import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * コード片置き場
@@ -95,5 +97,32 @@ public class SandBox {
             // タスクが既に完了していたら無害
             task.cancel(true); // 実行中ならインタラプトする
         }
+    }
+
+/** List 7-20 プライベートなExecutorを使う - その寿命はこのメソッドの寿命とイコールだ */
+boolean checkMail(Set<String> hosts, long timeout, TimeUnit unit) throws InterruptedException {
+    ExecutorService exec = Executors.newCachedThreadPool();
+    final AtomicBoolean hasNewMail = new AtomicBoolean(false);
+    try {
+        for(final String host : hosts) {
+            exec.execute(new Runnable() {
+                @Override
+                public void run() {
+                    if(checkMail(host)) {
+                        hasNewMail.set(true);
+                    }
+                }
+            });
+        }
+    } finally {
+        exec.shutdown();
+        exec.awaitTermination(timeout, unit);
+    }
+    return hasNewMail.get();
+}
+
+    boolean checkMail(String host) {
+        // FIXME
+        return true;
     }
 }
